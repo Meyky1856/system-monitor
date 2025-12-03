@@ -1,6 +1,6 @@
-# SysMon - Linux System Monitor
+# Linux System Monitor
 
-**SysMon** adalah aplikasi pemantau sistem berbasis terminal (TUI) yang ringan dan ditulis menggunakan bahasa C (C11). Aplikasi ini membaca data langsung dari kernel Linux melalui sistem file `/proc` dan menampilkannya menggunakan library `ncurses` dengan antarmuka yang bersih dan responsif.
+**Aplikasi System Monitor** ini adalah aplikasi pemantau sistem berbasis terminal (TUI) yang ringan dan ditulis menggunakan bahasa C (C11). Aplikasi ini membaca data langsung dari kernel Linux melalui sistem file `/proc` dan menampilkannya menggunakan library `ncurses` dengan antarmuka yang bersih dan responsif.
 
 ## 🚀 Fitur
 
