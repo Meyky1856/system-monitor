@@ -20,7 +20,7 @@
 Proyek ini menggunakan struktur folder yang rapi:
 
 ```text
-sysmon/
+system-monitor/
 ├── Makefile        # Sistem build otomatis
 ├── README.md       # Dokumentasi ini
 ├── include/        # Header files (.h)
