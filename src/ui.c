@@ -10,9 +10,9 @@
 static double cpu_hist[HIST_SIZE] = {0};
 static double mem_hist[HIST_SIZE] = {0};
 
-// Helper untuk menggambar border (Dipanggil SETELAH isi window digambar)
+// Helper untuk menggambar border
 void draw_border_title(WINDOW *win, const char *title) {
-    box(win, 0, 0); // Gambar border
+    box(win, 0, 0); 
     if (title) {
         wattron(win, A_BOLD);
         mvwprintw(win, 0, 2, " %s ", title);
@@ -21,41 +21,59 @@ void draw_border_title(WINDOW *win, const char *title) {
     wrefresh(win);
 }
 
-// Grafik menggunakan DOT (.) dan aman terhadap border
+// === FUNGSI GRAFIK BARU (GTOP STYLE) ===
 void draw_graph(WINDOW *win, double *data, int max_val) {
     int h = getmaxy(win) - 2; 
     int w = getmaxx(win) - 2; 
     
     if (h <= 0 || w <= 0) return;
 
-    // Bersihkan area grafik (agar tidak ada sisa karakter sampah)
+    // Karakter blok Unicode untuk resolusi tinggi vertikal
+    // Dari kosong, 1/8, 2/8, ... sampai penuh (8/8)
+    const char *blocks[] = {" ", "▂", "▃", "▄", "▅", "▆", "▇", "█"};
+
+    // Bersihkan area grafik
     for(int i=1; i<=h; i++) {
         mvwhline(win, i, 1, ' ', w);
     }
 
     for (int x = 0; x < w; x++) {
-        // Ambil data history
         int idx = x; 
         if (idx >= HIST_SIZE) break;
 
         double val = data[idx];
+        if (val < 0) val = 0;
         
-        int bar_h = (int)((val / (double)max_val) * h);
-        if (bar_h > h) bar_h = h;
-        if (val > 1.0 && bar_h == 0) bar_h = 1; 
+        // Hitung tinggi grafik dalam satuan karakter
+        double height_exact = (val / (double)max_val) * h;
+        int full_blocks = (int)height_exact;
+        
+        // Pastikan tidak melebihi tinggi window
+        if (full_blocks > h) full_blocks = h;
 
+        // Hitung sisa pecahan untuk blok paling atas (agar lebih presisi)
+        int frac_index = (int)((height_exact - full_blocks) * 8); 
+        if (frac_index > 7) frac_index = 7;
+        if (frac_index < 0) frac_index = 0;
+
+        // Gambar dari bawah ke atas
         for (int y = 0; y < h; y++) {
-            int draw_y = h - y; 
-            
-            if (y < bar_h) {
-                // HANYA MENGGUNAKAN TITIK (.) SESUAI REQUEST
-                mvwaddch(win, draw_y, w - x, '.'); 
+            int draw_y = h - y; // Koordinat Y ncurses (1 itu paling atas)
+
+            if (y < full_blocks) {
+                // Blok Penuh
+                mvwprintw(win, draw_y, w - x, "█");
+            } else if (y == full_blocks) {
+                // Blok Pecahan (Puncak grafik)
+                if (val > 0.5) { // Hanya gambar jika ada nilai signifikan
+                    mvwprintw(win, draw_y, w - x, "%s", blocks[frac_index]);
+                }
             }
         }
     }
 }
 
-// Bar usage [||||    ]
+// Bar usage yang lebih solid [████░░░░]
 void draw_usage_bar(WINDOW *win, int y, int x, int width, double pct, int color_pair) {
     if (width < 2) return;
     int inner_width = width - 2;
@@ -65,9 +83,15 @@ void draw_usage_bar(WINDOW *win, int y, int x, int width, double pct, int color_
 
     mvwaddch(win, y, x, '[');
     if (color_pair > 0) wattron(win, COLOR_PAIR(color_pair));
+    
     for (int i = 0; i < inner_width; i++) {
-        waddch(win, (i < filled) ? '|' : ' ');
+        // Gunakan karakter blok penuh untuk isi, dan titik redup untuk sisa
+        if (i < filled) 
+            wprintw(win, "|"); // Bisa diganti "█" jika mau sangat padat
+        else 
+            waddch(win, ' ');
     }
+    
     if (color_pair > 0) wattroff(win, COLOR_PAIR(color_pair));
     mvwaddch(win, y, x + width - 1, ']');
 }
@@ -128,7 +152,7 @@ void draw_ui(CpuUsage *cpu, MemInfo *mem, DiskList *disks, ProcessList *pl, int 
     draw_graph(win_g_cpu, cpu_hist, 100);
     wattroff(win_g_cpu, COLOR_PAIR(1));
     mvwprintw(win_g_cpu, 1, 2, "Total: %.1f%%", cpu->total);
-    draw_border_title(win_g_cpu, "CPU Usage"); // Gambar border terakhir!
+    draw_border_title(win_g_cpu, "CPU Usage");
 
     // 2. RAM GRAPH
     wattron(win_g_mem, COLOR_PAIR(2));
@@ -136,7 +160,7 @@ void draw_ui(CpuUsage *cpu, MemInfo *mem, DiskList *disks, ProcessList *pl, int 
     wattroff(win_g_mem, COLOR_PAIR(2));
     draw_border_title(win_g_mem, "Memory Usage");
 
-    // 3. DISK SPACE (Free di Kanan)
+    // 3. DISK SPACE
     int dy = 1;
     int max_d = (getmaxy(win_disk)-2)/3;
     int show_d = 0;
@@ -148,20 +172,15 @@ void draw_ui(CpuUsage *cpu, MemInfo *mem, DiskList *disks, ProcessList *pl, int 
         double free_gb = (double)disks->list[i].free_kb / (1024*1024);
         double pct = (used_gb / total_gb) * 100.0;
         
-        // Baris 1: Mountpoint
         wattron(win_disk, A_BOLD);
         mvwprintw(win_disk, dy, 2, "%s", disks->list[i].mountpoint);
         wattroff(win_disk, A_BOLD);
         
-        // Baris 2: Bar
         draw_usage_bar(win_disk, dy+1, 2, dw-4, pct, 3);
         
-        // Baris 3: Used (Kiri) & Free (Kanan Mentok)
         mvwprintw(win_disk, dy+2, 2, "Used: %.1fG", used_gb);
-        
         char free_str[32];
         snprintf(free_str, 32, "Free: %.1fG", free_gb);
-        // Hitung posisi X agar pas di kanan (width - strlen - 2 padding)
         mvwprintw(win_disk, dy+2, dw - strlen(free_str) - 2, "%s", free_str);
         
         dy+=4;
